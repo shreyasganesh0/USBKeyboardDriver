@@ -1,0 +1,1 @@
+savedcmd_/home/ShreyasGanesh/Projects/Assignment6/build/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/ShreyasGanesh/Projects/Assignment6/build/Module.symvers -T /home/ShreyasGanesh/Projects/Assignment6/build/modules.order -i Module.symvers -e 
