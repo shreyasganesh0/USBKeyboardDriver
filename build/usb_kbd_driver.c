@@ -1,5 +1,5 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-#define CAP_CODE 0x39
+#define CAPS_CODE 0x39
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
@@ -65,7 +65,8 @@ static const unsigned char usb_kbd_keycode[256] = {
 struct usb_kbd {
     uint8_t mode;
     uint8_t caps_count;
-	spinlock_t count_lock;
+    uint8_t caps_pressed;
+	spinlock_t caps_lock;
 
 	struct input_dev *dev;
 	struct usb_device *usbdev;
@@ -107,55 +108,6 @@ static void usb_kbd_irq(struct urb *urb)
 	for (i = 0; i < 8; i++)
 		input_report_key(kbd->dev, usb_kbd_keycode[i + 224], (kbd->new[0] >> i) & 1);
 
-		for (i = 2; i < 8; i++) {
-
-        //release check
-		if (kbd->old[i] > 3 && memscan(kbd->new + 2, kbd->old[i], 6) == kbd->new + 8) {
-			if (usb_kbd_keycode[kbd->old[i]]) {
-                if (usb_kbd_keycode[kbd->old[i]] == usb_kbd_keycode[CAPS_CODE]) {
-
-                    spin_lock_irqsave(&kbd->caps_lock, flags);
-                    if (kbd->caps_pressed) {
-
-                        kbd->caps_pressed = 0;
-                        kbd->caps_count++;
-                    }
-
-                    if (kbd->caps_count == 4) {
-
-                        kbd->mode = !kbd->mode; 
-                        kbd->caps_count = 0;
-                    }
-                    spin_unlock_irqrestore(&kbd->caps_lock, flags);
-                }
-
-                input_report_key(kbd->dev, usb_kbd_keycode[kbd->old[i]], 0);
-            }
-			else {
-				hid_info(urb->dev, "Unknown key (scancode %#x) released.\n", kbd->old[i]);
-            }
-		}
-
-        //press check
-		if (kbd->new[i] > 3 && memscan(kbd->old + 2, kbd->new[i], 6) == kbd->old + 8) {
-			if (usb_kbd_keycode[kbd->new[i]])
-                if (usb_kbd_keycode[kbd->new[i]] == usb_kbd_keycode[CAPS_CODE]) {
-                    spin_lock_irqsave(&kbd->caps_lock, flags);
-                    if (kbd->caps_pressed) {
-
-                        kbd->caps_count = 0; //reset if press exists for 2 events
-                    }
-                    kbd->caps_pressed = 1;
-                    spin_unlock_irqrestore(&kbd->caps_lock, flags);
-                }
-
-                input_report_key(kbd->dev, usb_kbd_keycode[kbd->new[i]], 1);
-                }
-			else {
-				hid_info(urb->dev, "Unknown key (scancode %#x) pressed.\n", kbd->new[i]);
-            }
-		}
-	}
 for (i = 2; i < 8; i++) {
 
         //release check
@@ -187,7 +139,7 @@ for (i = 2; i < 8; i++) {
 
         //press check
 		if (kbd->new[i] > 3 && memscan(kbd->old + 2, kbd->new[i], 6) == kbd->old + 8) {
-			if (usb_kbd_keycode[kbd->new[i]])
+			if (usb_kbd_keycode[kbd->new[i]]) {
                     spin_lock_irqsave(&kbd->caps_lock, flags);
 
                 if (usb_kbd_keycode[kbd->new[i]] == usb_kbd_keycode[CAPS_CODE]) {

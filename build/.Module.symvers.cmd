@@ -1,0 +1,1 @@
+savedcmd_/home/ubuntu/Projects/USBKeyboardDriver/build/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/ubuntu/Projects/USBKeyboardDriver/build/Module.symvers -T /home/ubuntu/Projects/USBKeyboardDriver/build/modules.order -i Module.symvers -e 
