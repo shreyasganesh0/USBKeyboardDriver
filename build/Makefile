@@ -1,4 +1,4 @@
-obj-m := char_driver.o
+obj-m := usb_kbd_driver.o
 
 KERNEL_DIR = /lib/modules/$(shell uname -r)/build
 
