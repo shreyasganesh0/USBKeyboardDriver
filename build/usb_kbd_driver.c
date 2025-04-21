@@ -1,17 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
-/*
- *  Copyright (c) 1999-2001 Vojtech Pavlik
- *
- *  USB HIDBP Keyboard support
- */
-
-/*
- *
- * Should you need to contact me, the author, you can do so either by
- * e-mail - mail your message to <vojtech@ucw.cz>, or by paper mail:
- * Vojtech Pavlik, Simunkova 1594, Prague 8, 182 00 Czech Republic
- */
-
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #define CAP_CODE 0x39
 
@@ -23,9 +9,6 @@
 #include <linux/hid.h>
 #include <linux/types.h>
 
-/*
- * Version Information
- */
 #define DRIVER_VERSION ""
 #define DRIVER_AUTHOR "Vojtech Pavlik <vojtech@ucw.cz>"
 #define DRIVER_DESC "USB HID Boot Protocol keyboard driver"
@@ -82,6 +65,8 @@ static const unsigned char usb_kbd_keycode[256] = {
 struct usb_kbd {
     uint8_t mode;
     uint8_t caps_count;
+	spinlock_t count_lock;
+
 	struct input_dev *dev;
 	struct usb_device *usbdev;
 	unsigned char old[8];
@@ -104,6 +89,7 @@ struct usb_kbd {
 static void usb_kbd_irq(struct urb *urb)
 {
 	struct usb_kbd *kbd = urb->context;
+	unsigned long flags;
 	int i;
 
 	switch (urb->status) {
@@ -121,35 +107,107 @@ static void usb_kbd_irq(struct urb *urb)
 	for (i = 0; i < 8; i++)
 		input_report_key(kbd->dev, usb_kbd_keycode[i + 224], (kbd->new[0] >> i) & 1);
 
-	for (i = 2; i < 8; i++) {
-
-        //press check
-		if (kbd->old[i] > 3 && memscan(kbd->new + 2, kbd->old[i], 6) == kbd->new + 8) {
-			if (usb_kbd_keycode[kbd->old[i]])
-                if (usb_kbd_keycode[kbd->old[i]] == usb_kbd_keycode[CAPS_CODE]) {
-
-                    kbd->caps_pressed = 1;
-                }
-				input_report_key(kbd->dev, usb_kbd_keycode[kbd->old[i]], 0);
-			else
-				hid_info(urb->dev,
-					 "Unknown key (scancode %#x) released.\n",
-					 kbd->old[i]);
-		}
+		for (i = 2; i < 8; i++) {
 
         //release check
-		if (kbd->new[i] > 3 && memscan(kbd->old + 2, kbd->new[i], 6) == kbd->old + 8) {
-			if (usb_kbd_keycode[kbd->new[i]])
+		if (kbd->old[i] > 3 && memscan(kbd->new + 2, kbd->old[i], 6) == kbd->new + 8) {
+			if (usb_kbd_keycode[kbd->old[i]]) {
                 if (usb_kbd_keycode[kbd->old[i]] == usb_kbd_keycode[CAPS_CODE]) {
 
-                    kbd->caps_count += 1;
-                    if (kbd->caps_count % 4 == 0) kbd->mode = !kbd->mode;
+                    spin_lock_irqsave(&kbd->caps_lock, flags);
+                    if (kbd->caps_pressed) {
+
+                        kbd->caps_pressed = 0;
+                        kbd->caps_count++;
+                    }
+
+                    if (kbd->caps_count == 4) {
+
+                        kbd->mode = !kbd->mode; 
+                        kbd->caps_count = 0;
+                    }
+                    spin_unlock_irqrestore(&kbd->caps_lock, flags);
                 }
-				input_report_key(kbd->dev, usb_kbd_keycode[kbd->new[i]], 1);
-			else
-				hid_info(urb->dev,
-					 "Unknown key (scancode %#x) pressed.\n",
-					 kbd->new[i]);
+
+                input_report_key(kbd->dev, usb_kbd_keycode[kbd->old[i]], 0);
+            }
+			else {
+				hid_info(urb->dev, "Unknown key (scancode %#x) released.\n", kbd->old[i]);
+            }
+		}
+
+        //press check
+		if (kbd->new[i] > 3 && memscan(kbd->old + 2, kbd->new[i], 6) == kbd->old + 8) {
+			if (usb_kbd_keycode[kbd->new[i]])
+                if (usb_kbd_keycode[kbd->new[i]] == usb_kbd_keycode[CAPS_CODE]) {
+                    spin_lock_irqsave(&kbd->caps_lock, flags);
+                    if (kbd->caps_pressed) {
+
+                        kbd->caps_count = 0; //reset if press exists for 2 events
+                    }
+                    kbd->caps_pressed = 1;
+                    spin_unlock_irqrestore(&kbd->caps_lock, flags);
+                }
+
+                input_report_key(kbd->dev, usb_kbd_keycode[kbd->new[i]], 1);
+                }
+			else {
+				hid_info(urb->dev, "Unknown key (scancode %#x) pressed.\n", kbd->new[i]);
+            }
+		}
+	}
+for (i = 2; i < 8; i++) {
+
+        //release check
+		if (kbd->old[i] > 3 && memscan(kbd->new + 2, kbd->old[i], 6) == kbd->new + 8) {
+			if (usb_kbd_keycode[kbd->old[i]]) {
+                if (usb_kbd_keycode[kbd->old[i]] == usb_kbd_keycode[CAPS_CODE]) {
+
+                    spin_lock_irqsave(&kbd->caps_lock, flags);
+                    if (kbd->caps_pressed) {
+
+                        kbd->caps_pressed = 0;
+                        kbd->caps_count++;
+                    }
+
+                    if (kbd->caps_count == 4) {
+
+                        kbd->mode = !kbd->mode; 
+                        kbd->caps_count = 0;
+                    }
+                    spin_unlock_irqrestore(&kbd->caps_lock, flags);
+                }
+
+                input_report_key(kbd->dev, usb_kbd_keycode[kbd->old[i]], 0);
+            }
+			else {
+				hid_info(urb->dev, "Unknown key (scancode %#x) released.\n", kbd->old[i]);
+            }
+		}
+
+        //press check
+		if (kbd->new[i] > 3 && memscan(kbd->old + 2, kbd->new[i], 6) == kbd->old + 8) {
+			if (usb_kbd_keycode[kbd->new[i]])
+                    spin_lock_irqsave(&kbd->caps_lock, flags);
+
+                if (usb_kbd_keycode[kbd->new[i]] == usb_kbd_keycode[CAPS_CODE]) {
+                    if (kbd->caps_pressed) {
+
+                        kbd->caps_count = 0; //reset if press exists for 2 events
+                    }
+                    kbd->caps_pressed = 1;
+                } else {
+
+                  kbd->caps_count = 0; //reset if press exists for 2 events
+                }
+                
+                spin_unlock_irqrestore(&kbd->caps_lock, flags);
+
+                input_report_key(kbd->dev, usb_kbd_keycode[kbd->new[i]], 1);
+                }
+			else {
+				hid_info(urb->dev, "Unknown key (scancode %#x) pressed.\n", kbd->new[i]);
+            }
 		}
 	}
 
@@ -174,10 +232,23 @@ static int usb_kbd_event(struct input_dev *dev, unsigned int type,
 	if (type != EV_LED)
 		return -1;
 
+    spin_lock_irqsave(&kbd->caps_lock, flags);
+    if (code == LED_CAPSL && kbd->mode == 1) {value = !value;} // invert value if mode = 1 (mode2)
+	spin_unlock_irqrestore(&kbd->caps_lock, flags);
+
 	spin_lock_irqsave(&kbd->leds_lock, flags);
+    if (code == LED_CAPSL) {
 	kbd->newleds = (!!test_bit(LED_KANA,    dev->led) << 4) | (!!test_bit(LED_COMPOSE, dev->led) << 3) |
-		       (!!test_bit(LED_SCROLLL, dev->led) << 2) | (!!test_bit(LED_CAPSL,   dev->led) << 1) |
+		       (!!test_bit(LED_SCROLLL, dev->led) << 2) | 
+		       ((value) << 1) | 
 		       (!!test_bit(LED_NUML,    dev->led));
+    } else {
+        kbd->newleds = (!!test_bit(LED_KANA,    dev->led) << 4) | (!!test_bit(LED_COMPOSE, dev->led) << 3) |
+                   (!!test_bit(LED_SCROLLL, dev->led) << 2) | 
+                   (!!test_bit(LED_CAPSL, dev->led) << 1) | 
+                   (!!test_bit(LED_NUML,    dev->led));
+    }
+
 
 	if (kbd->led_urb_submitted){
 		spin_unlock_irqrestore(&kbd->leds_lock, flags);
@@ -307,6 +378,11 @@ static int usb_kbd_probe(struct usb_interface *iface,
 	kbd->usbdev = dev;
 	kbd->dev = input_dev;
 	spin_lock_init(&kbd->leds_lock);
+
+    kbd->caps_count = 0;
+    kbd->caps_pressed = 0;
+    kbd->mode = 0;
+	spin_lock_init(&kbd->caps_lock);
 
 	if (dev->manufacturer)
 		strscpy(kbd->name, dev->manufacturer, sizeof(kbd->name));
