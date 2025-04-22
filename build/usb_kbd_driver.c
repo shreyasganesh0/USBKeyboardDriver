@@ -437,4 +437,16 @@ static struct usb_driver usb_kbd_driver = {
 	.disconnect =	usb_kbd_disconnect,
 	.id_table =	usb_kbd_id_table,
 };
+static int __init usbkbd_init(void)
+{
+    return usb_register(&usb_kbd_driver);
+}
 
+static void __exit usbkbd_exit(void)
+{
+    usb_deregister(&usb_kbd_driver);
+}
+
+module_init(usbkbd_init);
+module_exit(usbkbd_exit);
+MODULE_LICENSE("GPL");
