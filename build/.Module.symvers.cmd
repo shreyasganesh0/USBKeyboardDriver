@@ -1,1 +1,0 @@
-savedcmd_/home/shreyasganesh/Projects/USBKeyboardDriver/build/Module.symvers :=  scripts/mod/modpost -M -m -a      -o /home/shreyasganesh/Projects/USBKeyboardDriver/build/Module.symvers -T /home/shreyasganesh/Projects/USBKeyboardDriver/build/modules.order -i Module.symvers -e 

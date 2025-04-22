@@ -10,12 +10,11 @@
 #include <linux/types.h>
 
 #define DRIVER_VERSION ""
-#define DRIVER_AUTHOR "Vojtech Pavlik <vojtech@ucw.cz>"
-#define DRIVER_DESC "USB HID Boot Protocol keyboard driver"
+#define DRIVER_AUTHOR "Shreyas Ganesh"
+#define DRIVER_DESC "USB HID Boot Protocol keyboard driver with dual mode"
 
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_DESCRIPTION(DRIVER_DESC);
-MODULE_LICENSE("GPL");
 
 static const unsigned char usb_kbd_keycode[256] = {
 	  0,  0,  0,  0, 30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38,
@@ -37,31 +36,6 @@ static const unsigned char usb_kbd_keycode[256] = {
 };
 
 
-/**
- * struct usb_kbd - state of each attached keyboard
- * @dev:	input device associated with this keyboard
- * @usbdev:	usb device associated with this keyboard
- * @old:	data received in the past from the @irq URB representing which
- *		keys were pressed. By comparing with the current list of keys
- *		that are pressed, we are able to see key releases.
- * @irq:	URB for receiving a list of keys that are pressed when a
- *		new key is pressed or a key that was pressed is released.
- * @led:	URB for sending LEDs (e.g. numlock, ...)
- * @newleds:	data that will be sent with the @led URB representing which LEDs
- *		should be on
- * @name:	Name of the keyboard. @dev's name field points to this buffer
- * @phys:	Physical path of the keyboard. @dev's phys field points to this
- *		buffer
- * @new:	Buffer for the @irq URB
- * @cr:		Control request for @led URB
- * @leds:	Buffer for the @led URB
- * @new_dma:	DMA address for @irq URB
- * @leds_dma:	DMA address for @led URB
- * @leds_lock:	spinlock that protects @leds, @newleds, and @led_urb_submitted
- * @led_urb_submitted: indicates whether @led is in progress, i.e. it has been
- *		submitted and its completion handler has not returned yet
- *		without	resubmitting @led
- */
 struct usb_kbd {
     uint8_t mode;
     uint8_t caps_count;
@@ -108,7 +82,7 @@ static void usb_kbd_irq(struct urb *urb)
 	for (i = 0; i < 8; i++)
 		input_report_key(kbd->dev, usb_kbd_keycode[i + 224], (kbd->new[0] >> i) & 1);
 
-for (i = 2; i < 8; i++) {
+    for (i = 2; i < 8; i++) {
 
         //release check
 		if (kbd->old[i] > 3 && memscan(kbd->new + 2, kbd->old[i], 6) == kbd->new + 8) {
@@ -124,6 +98,8 @@ for (i = 2; i < 8; i++) {
 
                     if (kbd->caps_count == 4) {
 
+                        input_report_key(kbd->dev, usb_kbd_keycode[kbd->old[i]], 0);
+                        input_report_key(kbd->dev, usb_kbd_keycode[kbd->old[i]], 1);
                         kbd->mode = !kbd->mode; 
                         kbd->caps_count = 0;
                     }
@@ -131,8 +107,8 @@ for (i = 2; i < 8; i++) {
                 }
 
                 input_report_key(kbd->dev, usb_kbd_keycode[kbd->old[i]], 0);
-            }
-			else {
+            } else {
+
 				hid_info(urb->dev, "Unknown key (scancode %#x) released.\n", kbd->old[i]);
             }
 		}
@@ -140,14 +116,17 @@ for (i = 2; i < 8; i++) {
         //press check
 		if (kbd->new[i] > 3 && memscan(kbd->old + 2, kbd->new[i], 6) == kbd->old + 8) {
 			if (usb_kbd_keycode[kbd->new[i]]) {
-                    spin_lock_irqsave(&kbd->caps_lock, flags);
+
+                spin_lock_irqsave(&kbd->caps_lock, flags);
 
                 if (usb_kbd_keycode[kbd->new[i]] == usb_kbd_keycode[CAPS_CODE]) {
+
                     if (kbd->caps_pressed) {
 
                         kbd->caps_count = 0; //reset if press exists for 2 events
                     }
-                    kbd->caps_pressed = 1;
+
+                kbd->caps_pressed = 1;
                 } else {
 
                   kbd->caps_count = 0; //reset if press exists for 2 events
@@ -156,8 +135,8 @@ for (i = 2; i < 8; i++) {
                 spin_unlock_irqrestore(&kbd->caps_lock, flags);
 
                 input_report_key(kbd->dev, usb_kbd_keycode[kbd->new[i]], 1);
-                }
-			else {
+            } else {
+
 				hid_info(urb->dev, "Unknown key (scancode %#x) pressed.\n", kbd->new[i]);
             }
 		}

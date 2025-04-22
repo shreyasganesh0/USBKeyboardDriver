@@ -113,4 +113,4 @@ MODULE_INFO(depends, "");
 
 MODULE_ALIAS("usb:v*p*d*dc*dsc*dp*ic03isc01ip01in*");
 
-MODULE_INFO(srcversion, "5CE264337DCC423282BD5FA");
+MODULE_INFO(srcversion, "A6D3630F5C28EA27954C952");
